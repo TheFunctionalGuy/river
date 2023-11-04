@@ -22,6 +22,7 @@ const util = @import("../util.zig");
 
 const Error = @import("../command.zig").Error;
 const Seat = @import("../Seat.zig");
+const View = @import("../View.zig");
 
 /// Switch focus to the passed tags.
 pub fn setFocusedTags(
@@ -75,6 +76,45 @@ pub fn toggleFocusedTags(
         output.pending.tags = new_focused_tags;
         server.root.applyPending();
     }
+}
+
+/// Toggle focus of the passsed tags and focus first view in that tag.
+pub fn toggleFocusedTagsSelect(
+    seat: *Seat,
+    args: []const [:0]const u8,
+    out: *?[]const u8,
+) Error!void {
+    const tags = try parseTags(args, out);
+    const output = seat.focused_output orelse return;
+    const new_focused_tags = output.pending.tags ^ tags;
+    if (new_focused_tags != 0) {
+        output.previous_tags = output.pending.tags;
+        output.pending.tags = new_focused_tags;
+
+        if (new_focused_tags & tags != 0) {
+            if (try getFirstViewInTags(seat, tags)) |view| {
+                seat.focus(view);
+            }
+        }
+
+        server.root.applyPending();
+    }
+}
+
+fn getFirstViewInTags(seat: *Seat, tags: u32) !?*View {
+    if (seat.focused != .view) return null;
+    if (seat.focused.view.pending.fullscreen) return null;
+    const output = seat.focused_output orelse return null;
+
+    var it = output.pending.wm_stack.iterator(.forward);
+
+    while (it.next()) |view| {
+        if (view.pending.tags & tags != 0) {
+            return view;
+        }
+    }
+
+    return null;
 }
 
 /// Toggle the passed tags of the focused view
